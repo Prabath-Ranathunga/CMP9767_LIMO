@@ -1,4 +1,6 @@
 import rclpy
+import cv2
+import numpy as np
 from rclpy.node import Node
 from rclpy import qos
 from cv2 import namedWindow, cvtColor, imshow, inRange
@@ -10,6 +12,7 @@ from numpy import mean
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
+font = cv2.FONT_HERSHEY_SIMPLEX
 
 class ImageConverter(Node):
 
@@ -21,20 +24,44 @@ class ImageConverter(Node):
                                                     self.image_callback,
                                                     qos_profile=qos.qos_profile_sensor_data) # Set QoS Profile
         
+        
     def image_callback(self, data):
         namedWindow("Image window")
-        namedWindow("masked")
-        namedWindow("canny")
-        cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-        cv_image = resize(cv_image, None, fx=0.2, fy=0.2, interpolation = INTER_CUBIC)
+        namedWindow("Masked")
 
-        mask = inRange(cv_image, (0, 150, 150), (255, 255, 255))
-        imshow("masked", mask)
-        gray_img = cvtColor(cv_image, COLOR_BGR2GRAY)
-        img3 = Canny(gray_img, 10, 200)
-        imshow("canny", img3)
+        cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        cv_image = resize(cv_image, None, fx=1, fy=1, interpolation = INTER_CUBIC)
+
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+
+        lower_pink = np.array([140, 50, 150])
+        upper_pink = np.array([180, 255, 255])
+
+        mask = cv2.inRange(hsv, lower_pink, upper_pink)
+
+        def search_contours(mask):
+            contours_count = 0
+            contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for contour in contours:
+                cv2.drawContours(cv_image, [contour], -1, (0, 255, 0), 2)
+                contours_count += 1
+
+                M = cv2.moments(contour)
+                if M["m00"] !=0:
+                    cX = int(M["m10"] / M["m00"])
+                    cY = int(M["m01"] / M["m00"])
+                else:
+                    cX, cY = 0, 0
+                cv2.putText(cv_image, f"{contours_count}", (cX - 25, cY -25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+            return contours_count
+
+        count = search_contours(mask)
 
         imshow("Image window", cv_image)
+        imshow("Masked", mask)
+
         waitKey(1)
 
 def main(args=None):
